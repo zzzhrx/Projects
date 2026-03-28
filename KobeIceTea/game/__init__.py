@@ -1,0 +1,1 @@
+"""KobeIceTea pygame demo package."""
