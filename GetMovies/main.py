@@ -356,8 +356,8 @@ def main():
         # 保存到 JSON 文件
         save_to_json(all_movies, json_path)
         print("爬取顺利完成  数据已保存到 douban_movies.json 文件中")
-        save_to_sql()
-        print('数据成功存储到 mysql 数据库中')
+        # save_to_sql()
+        # print('数据成功存储到 mysql 数据库中')
     
     except Exception as e:
         print(f"程序执行过程中出错: {e}")

@@ -1,3 +1,0 @@
-# WELCOME
-
-WHAT IS IT?
