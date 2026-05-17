@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1a1a2e;
+  --color-gold: #c9a96e;
+  --color-vermilion: #c0392b;
+  --color-rice: #f5f0e8;
+  --color-ink-light: #2a2a4e;
+  --color-gold-light: #e0c992;
+  --color-vermilion-light: #e74c3c;
+  --color-rice-dark: #d4cfc6;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-ink);
+  color: var(--color-rice);
+  font-family: "Noto Serif SC", "SimSun", serif;
+}
+
+#root {
+  min-height: 100vh;
+}

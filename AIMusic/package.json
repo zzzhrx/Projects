@@ -1,0 +1,46 @@
+{
+  "name": "gu-yun-ai",
+  "version": "1.0.0",
+  "description": "古韵AI - 古风音乐创作工坊",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && python -m uvicorn app.main:app --reload --port 8000",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && pyinstaller --onefile --name gu-yun-backend --distpath ../dist-backend app/main.py",
+    "build": "npm run build:frontend && npm run build:backend && electron-builder",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.guyun.ai-music",
+    "productName": "古韵AI",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "dist-backend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "dist-backend/gu-yun-backend.exe",
+        "to": "backend/gu-yun-backend.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "electron/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "古韵AI"
+    }
+  }
+}
