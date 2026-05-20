@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, fields, replace
+from datetime import date, datetime, timedelta
 from typing import Any
 
 
@@ -17,7 +18,9 @@ class TravelBrief:
     origin: str | None = None
     destination: str | None = None
     departure_date: str | None = None
+    departure_date_iso: str | None = None
     return_date: str | None = None
+    return_date_iso: str | None = None
     arrival_deadline: str | None = None
     business_constraints: str | None = None
     business_location: str | None = None
@@ -73,7 +76,9 @@ class TravelBrief:
             "origin": "出发地",
             "destination": "目的地",
             "departure_date": "出行日期",
+            "departure_date_iso": "出行日期(标准化)",
             "return_date": "返程时间",
+            "return_date_iso": "返程时间(标准化)",
             "arrival_deadline": "到达时限",
             "business_constraints": "业务约束",
             "business_location": "业务地点",
@@ -267,8 +272,8 @@ BUSINESS_LOCATION_SUFFIXES = "写字楼|会议室|办公室|大厦|园区|广场
 DATE_PATTERNS: tuple[str, ...] = (
     r"今天",
     r"明天",
-    r"后天",
     r"大后天",
+    r"后天",
     r"下周[一二三四五六日天]?",
     r"本周[一二三四五六日天]?",
     r"周[一二三四五六日天]",
@@ -277,10 +282,22 @@ DATE_PATTERNS: tuple[str, ...] = (
     r"\d{4}-\d{1,2}-\d{1,2}",
 )
 
+CHINESE_WEEKDAY_INDEX: dict[str, int] = {
+    "一": 0,
+    "二": 1,
+    "三": 2,
+    "四": 3,
+    "五": 4,
+    "六": 5,
+    "日": 6,
+    "天": 6,
+}
+
 
 def analyze_travel_brief(query: str, context: dict[str, Any] | None = None) -> TravelBriefAssessment:
     base_brief = TravelBrief.from_context(context)
-    updates = _extract_brief_updates(query)
+    reference_date = _reference_date_from_context(context)
+    updates = _extract_brief_updates(query, reference_date)
     brief = base_brief.with_updates(updates)
     missing_keys = _missing_keys(brief)
     return TravelBriefAssessment(
@@ -379,10 +396,10 @@ def _recommendation_confidence(brief: TravelBrief, missing_keys: tuple[str, ...]
 def _build_best_option(brief: TravelBrief, readiness: str) -> str:
     route = _build_route_summary(brief)
     if readiness == "ready_for_preliminary_recommendation":
-        departure = brief.departure_date or "出行日"
+        departure = brief.departure_date_iso or brief.departure_date or "出行日"
         if brief.risk_tolerance and "低风险" in brief.risk_tolerance:
-            return f"{route} 选择周二晚提前抵达，周三白天留足缓冲，优先保证{departure}的准点到达"
-        return f"{route} 选择周三早班机优先，兼顾效率与预算"
+            return f"{route} 选择前一晚提前抵达，出行日白天留足缓冲，优先保证{departure}的准点到达"
+        return f"{route} 选择出行日早班直达优先，兼顾效率与预算"
     if brief.departure_date:
         return f"{route} 先补齐业务地点后，优先给出当天早班机或前一晚抵达的双方案"
     return f"{route} 先补齐关键约束，再生成推荐"
@@ -413,8 +430,9 @@ def _build_hotel_strategy(brief: TravelBrief) -> str:
 
 def _build_schedule_timeline(brief: TravelBrief, route: str) -> tuple[str, ...]:
     timeline: list[str] = []
-    if brief.departure_date:
-        timeline.append(f"{brief.departure_date}：完成出发前准备并确认实时票价/余位")
+    travel_date = brief.departure_date_iso or brief.departure_date
+    if travel_date:
+        timeline.append(f"{travel_date}：完成出发前准备并确认实时票价/余位")
     if brief.arrival_deadline:
         timeline.append(f"出发当天：按{brief.arrival_deadline}倒推，留出至少1.5至2小时缓冲")
     if brief.business_location:
@@ -459,6 +477,7 @@ def _build_pending_checks(brief: TravelBrief, missing_keys: tuple[str, ...]) -> 
         checks.append("实时航班余位与价格")
     if brief.destination:
         checks.append("目的地酒店可订性与实时价格")
+        checks.append("目的地天气和出行风险")
     if brief.business_location:
         checks.append("从酒店到业务地点的通勤时间")
     if "travel_dates" in missing_keys:
@@ -536,7 +555,7 @@ def business_travel_phase_one_prompt_block() -> str:
 """.strip()
 
 
-def _extract_brief_updates(query: str) -> dict[str, Any]:
+def _extract_brief_updates(query: str, reference_date: date | None = None) -> dict[str, Any]:
     updates: dict[str, Any] = {}
     city_pair = _extract_city_pair(query)
     if city_pair:
@@ -552,10 +571,17 @@ def _extract_brief_updates(query: str) -> dict[str, Any]:
     departure_date = _first_match(query, DATE_PATTERNS)
     if departure_date:
         updates["departure_date"] = departure_date
+        normalized_departure_date = _normalize_date_expression(departure_date, reference_date)
+        if normalized_departure_date:
+            updates["departure_date_iso"] = normalized_departure_date
 
     return_date = _extract_return_date(query)
     if return_date:
         updates["return_date"] = return_date
+        return_date_expression = _first_match(return_date, DATE_PATTERNS) or return_date
+        normalized_return_date = _normalize_date_expression(return_date_expression, reference_date)
+        if normalized_return_date:
+            updates["return_date_iso"] = normalized_return_date
 
     arrival_deadline = _extract_arrival_deadline(query)
     if arrival_deadline:
@@ -675,8 +701,8 @@ def _extract_business_location(query: str) -> str | None:
             if cleaned:
                 return cleaned
 
-    if len(short_location) <= 30 and any(keyword in short_location for keyword in BUSINESS_LOCATION_KEYWORDS):
-        return _clean_location_text(short_location)
+    if len(query) <= 30 and any(keyword in query for keyword in BUSINESS_LOCATION_KEYWORDS):
+        return _clean_location_text(query)
 
     explicit_match = re.search(
         rf"(?:在|到|去|前往)([^，。,.；;]{{2,30}}?(?:{BUSINESS_LOCATION_SUFFIXES}))",
@@ -870,6 +896,92 @@ def _first_match(query: str, patterns: tuple[str, ...]) -> str | None:
         if match:
             return _clean_text(match.group(0))
     return None
+
+
+def _reference_date_from_context(context: dict[str, Any] | None) -> date:
+    if not context:
+        return date.today()
+
+    value = context.get("current_date") or context.get("requested_at")
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        for parser in (
+            lambda raw: datetime.fromisoformat(raw.replace("Z", "+00:00")).date(),
+            lambda raw: datetime.strptime(raw[:10], "%Y-%m-%d").date(),
+        ):
+            try:
+                return parser(text)
+            except ValueError:
+                continue
+    return date.today()
+
+
+def _normalize_date_expression(value: str | None, reference_date: date | None = None) -> str | None:
+    text = _clean_text(value)
+    if not text:
+        return None
+
+    ref = reference_date or date.today()
+
+    absolute_match = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+    if absolute_match:
+        year, month, day = map(int, absolute_match.groups())
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return None
+
+    month_day_match = re.search(r"(\d{1,2})月(\d{1,2})[日号]?", text)
+    if month_day_match:
+        month, day = map(int, month_day_match.groups())
+        try:
+            resolved = date(ref.year, month, day)
+            if resolved < ref:
+                resolved = date(ref.year + 1, month, day)
+            return resolved.isoformat()
+        except ValueError:
+            return None
+
+    if "大后天" in text:
+        return (ref + timedelta(days=3)).isoformat()
+    if "后天" in text:
+        return (ref + timedelta(days=2)).isoformat()
+    if "明天" in text:
+        return (ref + timedelta(days=1)).isoformat()
+    if "今天" in text:
+        return ref.isoformat()
+
+    next_week_match = re.search(r"下周([一二三四五六日天])?", text)
+    if next_week_match:
+        weekday = _weekday_index(next_week_match.group(1)) or 0
+        next_monday = ref + timedelta(days=7 - ref.weekday())
+        return (next_monday + timedelta(days=weekday)).isoformat()
+
+    this_week_match = re.search(r"本周([一二三四五六日天])?", text)
+    if this_week_match:
+        weekday = _weekday_index(this_week_match.group(1)) or 0
+        this_monday = ref - timedelta(days=ref.weekday())
+        return (this_monday + timedelta(days=weekday)).isoformat()
+
+    weekday_match = re.search(r"(?:周|星期)([一二三四五六日天])", text)
+    if weekday_match:
+        weekday = _weekday_index(weekday_match.group(1))
+        if weekday is None:
+            return None
+        days_ahead = (weekday - ref.weekday()) % 7
+        return (ref + timedelta(days=days_ahead)).isoformat()
+
+    return None
+
+
+def _weekday_index(value: str | None) -> int | None:
+    if not value:
+        return None
+    return CHINESE_WEEKDAY_INDEX.get(value)
 
 
 def _clean_text(value: Any) -> str | None:

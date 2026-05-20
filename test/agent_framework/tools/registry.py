@@ -11,6 +11,7 @@ from agent_framework.tools.amap import (
     build_amap_location_tool,
     build_amap_restaurant_tool,
     build_amap_route_tool,
+    build_amap_weather_tool,
 )
 from agent_framework.tools.web_search import build_tavily_search_tool
 
@@ -20,12 +21,25 @@ class RegisteredTool:
     name: str
     description: str
     builder: Callable[[], Any]
+    requires_authorization: bool = False
+    has_side_effects: bool = False
+    audit_log: bool = False
+    supports_dry_run: bool = False
     _instance: Any | None = field(default=None, init=False, repr=False)
 
     def get_instance(self) -> Any:
         if self._instance is None:
             self._instance = self.builder()
         return self._instance
+
+    @property
+    def meta(self) -> dict[str, bool]:
+        return {
+            "requires_authorization": self.requires_authorization,
+            "has_side_effects": self.has_side_effects,
+            "audit_log": self.audit_log,
+            "supports_dry_run": self.supports_dry_run,
+        }
 
 
 class ToolRegistry:
@@ -90,5 +104,10 @@ def build_amap_tool_specs() -> list[RegisteredTool]:
             name="amap_restaurant_search",
             description="Search restaurants around a business location using AMap POI data.",
             builder=build_amap_restaurant_tool,
+        ),
+        RegisteredTool(
+            name="amap_weather_forecast",
+            description="Get a weather forecast for a city or business location using AMap.",
+            builder=build_amap_weather_tool,
         ),
     ]

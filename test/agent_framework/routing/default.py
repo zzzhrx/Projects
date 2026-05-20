@@ -60,7 +60,6 @@ class KeywordSkillRouter(BaseSkillRouter):
         "模块",
         "目录",
         "结构",
-        "agent",
         "workflow",
     }
     travel_continuation_keywords = {

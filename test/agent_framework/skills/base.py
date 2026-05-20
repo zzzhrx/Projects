@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -10,6 +12,9 @@ class SkillSpec:
     instruction_block: str
     target_outcome: str
     suggested_tools: tuple[str, ...] = ()
+    context_builder: Callable[[str, dict[str, Any]], dict[str, Any]] | None = field(
+        default=None, repr=False
+    )
 
 
 class SkillRegistry:

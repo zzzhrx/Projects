@@ -1,6 +1,28 @@
 from __future__ import annotations
 
+from typing import Any
+
+from agent_framework.domains.business_travel import build_travel_context
+from agent_framework.domains.travel_planning import build_travel_plan_context
 from agent_framework.skills.base import SkillRegistry, SkillSpec
+
+
+def _build_leisure_context_if_relevant(query: str, context: dict[str, Any]) -> dict[str, Any]:
+    """Only build leisure context when the query or existing context indicates leisure travel."""
+    if context.get("travel_mode") == "leisure":
+        return build_travel_plan_context(query, context)
+    if isinstance(context.get("travel_plan_brief"), dict) and (
+        context["travel_plan_brief"].get("origin") or context["travel_plan_brief"].get("destination")
+    ):
+        return build_travel_plan_context(query, context)
+
+    leisure_keywords = (
+        "旅游", "旅行", "游玩", "景点", "度假", "打卡", "自由行", "亲子", "出游", "游览",
+    )
+    if any(kw in query for kw in leisure_keywords):
+        return build_travel_plan_context(query, context)
+
+    return context
 
 
 def build_default_skill_registry() -> SkillRegistry:
@@ -12,9 +34,10 @@ def build_default_skill_registry() -> SkillRegistry:
                 instruction_block=(
                     "Clarify the user’s real objective, answer directly, and keep the path forward practical. "
                     "For leisure travel, do not force business-travel style questioning. "
-                    "If the user asks for the best plan and key constraints are already present, provide a ranked recommendation with one主方案 and one备选方案."
+                    "If the user asks for the best plan and key constraints are already present, provide a ranked recommendation with one main plan and one backup plan."
                 ),
                 target_outcome="Provide helpful dialogue and grounded next steps for both general questions and leisure travel.",
+                context_builder=_build_leisure_context_if_relevant,
             ),
             SkillSpec(
                 name="research_assistant",
@@ -38,8 +61,10 @@ def build_default_skill_registry() -> SkillRegistry:
                     "amap_route_summary",
                     "amap_hotel_search",
                     "amap_restaurant_search",
+                    "amap_weather_forecast",
                     "tavily_search",
                 ),
+                context_builder=build_travel_context,
             ),
             SkillSpec(
                 name="solution_architect",

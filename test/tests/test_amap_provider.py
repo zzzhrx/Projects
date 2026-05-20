@@ -3,8 +3,8 @@ import unittest
 from unittest.mock import patch
 
 from agent_framework.core.settings import SearchSettings
-from agent_framework.providers.amap import AMapClient, normalize_address
-from agent_framework.tools.amap import hotel_search, location_lookup, route_summary
+from agent_framework.providers.amap import AMapClient, normalize_address, _redact_amap_key
+from agent_framework.tools.amap import hotel_search, location_lookup, route_summary, weather_forecast
 from agent_framework.tools.registry import build_default_tool_registry
 
 
@@ -30,6 +30,14 @@ class FakeSession:
 
 
 class AMapProviderTests(unittest.TestCase):
+    def test_redacts_api_key_from_error_messages(self):
+        message = "https://restapi.amap.com/v5/place/text?key=secret-value&keywords=x"
+
+        self.assertEqual(
+            _redact_amap_key(message),
+            "https://restapi.amap.com/v5/place/text?key=***&keywords=x",
+        )
+
     def test_normalize_address_accepts_business_location_alias(self):
         normalized = normalize_address(city_name="上海", business_location="上海中心大厦")
 
@@ -192,6 +200,95 @@ class AMapProviderTests(unittest.TestCase):
         self.assertEqual(result["routes"]["driving"][0]["taxi_fee"], "18")
         self.assertEqual(result["routes"]["walking"][0]["distance_meters"], 1200)
 
+    def test_weather_forecast_shapes_casts(self):
+        client = AMapClient(
+            "test-key",
+            session=FakeSession(
+                [
+                    {
+                        "status": "1",
+                        "count": "1",
+                        "pois": [
+                            {
+                                "name": "上海中心大厦",
+                                "address": "银城中路501号",
+                                "location": "121.50,31.23",
+                                "cityname": "上海市",
+                                "citycode": "021",
+                                "adcode": "310115",
+                            }
+                        ],
+                    },
+                    {
+                        "status": "1",
+                        "forecasts": [
+                            {
+                                "city": "浦东新区",
+                                "province": "上海",
+                                "reporttime": "2026-05-20 10:00:00",
+                                "casts": [
+                                    {
+                                        "date": "2026-05-27",
+                                        "week": "3",
+                                        "dayweather": "小雨",
+                                        "nightweather": "阴",
+                                        "daytemp": "24",
+                                        "nighttemp": "19",
+                                        "daywind": "东南",
+                                        "nightwind": "东南",
+                                        "daypower": "4",
+                                        "nightpower": "3",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                ]
+            ),
+        )
+
+        result = client.weather_forecast("上海", "上海中心大厦")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["query"]["adcode"], "310115")
+        self.assertEqual(result["casts"][0]["date"], "2026-05-27")
+        self.assertEqual(result["casts"][0]["day_weather"], "小雨")
+
+    def test_weather_tool_function_uses_client(self):
+        client = AMapClient(
+            "test-key",
+            session=FakeSession(
+                [
+                    {
+                        "status": "1",
+                        "count": "1",
+                        "pois": [
+                            {
+                                "name": "上海中心大厦",
+                                "location": "121.50,31.23",
+                                "cityname": "上海市",
+                                "adcode": "310115",
+                            }
+                        ],
+                    },
+                    {
+                        "status": "1",
+                        "forecasts": [
+                            {
+                                "city": "浦东新区",
+                                "casts": [{"date": "2026-05-27", "dayweather": "晴"}],
+                            }
+                        ],
+                    },
+                ]
+            ),
+        )
+
+        result = weather_forecast("上海", "上海中心大厦", client=client)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["casts"][0]["day_weather"], "晴")
+
 
 class AMapToolRegistryTests(unittest.TestCase):
     def test_amap_tools_are_hidden_without_api_key(self):
@@ -209,6 +306,7 @@ class AMapToolRegistryTests(unittest.TestCase):
         self.assertIn("amap_route_summary", names)
         self.assertIn("amap_hotel_search", names)
         self.assertIn("amap_restaurant_search", names)
+        self.assertIn("amap_weather_forecast", names)
 
 
 if __name__ == "__main__":

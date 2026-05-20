@@ -1,6 +1,7 @@
 import unittest
 
 from agent_framework.routing.default import KeywordSkillRouter
+from agent_framework.routing.llm_router import LLMFallbackRouter
 from agent_framework.skills.defaults import build_default_skill_registry
 
 
@@ -66,6 +67,35 @@ class RoutingTests(unittest.TestCase):
         decision = self.router.route("都可以，你推荐个最好的", self.registry, context)
 
         self.assertEqual(decision.skill.name, "business_travel_advisor")
+
+    def test_llm_fallback_cache_keeps_context_sensitive_followups_distinct(self):
+        class NoLLMRouter(LLMFallbackRouter):
+            def _llm_classify(self, query, skill_registry, fallback):
+                return fallback
+
+        router = NoLLMRouter(keyword_router=self.router)
+
+        no_context_decision = router.route("好的", self.registry, {})
+        travel_context_decision = router.route(
+            "好的",
+            self.registry,
+            {
+                "travel_brief": {
+                    "origin": "深圳",
+                    "destination": "上海",
+                    "departure_date": "下周三",
+                }
+            },
+        )
+
+        self.assertEqual(no_context_decision.skill.name, "general_assistant")
+        self.assertEqual(travel_context_decision.skill.name, "business_travel_advisor")
+
+    def test_llm_fallback_parses_list_content(self):
+        router = LLMFallbackRouter(keyword_router=self.router)
+        content = [{"type": "text", "text": '{"skill": "general_assistant"}'}]
+
+        self.assertEqual(router._message_content_as_text(content), '{"skill": "general_assistant"}')
 
 
 if __name__ == "__main__":

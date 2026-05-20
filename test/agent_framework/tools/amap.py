@@ -68,6 +68,16 @@ def restaurant_search(
     )
 
 
+def weather_forecast(
+    city: str,
+    address: str = "",
+    *,
+    client: AMapClient | None = None,
+) -> dict[str, Any]:
+    amap_client = client or AMapClient.from_env()
+    return amap_client.weather_forecast(city=city, address=address or None)
+
+
 def build_amap_location_tool(client: AMapClient | None = None):
     def amap_location_lookup(city: str, address: str) -> dict[str, Any]:
         """Resolve a city and address into AMap location metadata."""
@@ -135,6 +145,18 @@ def build_amap_restaurant_tool(client: AMapClient | None = None):
         name="amap_restaurant_search",
         description="Search restaurants around a business location using AMap POI data.",
         func=amap_restaurant_search,
+    )
+
+
+def build_amap_weather_tool(client: AMapClient | None = None):
+    def amap_weather_forecast(city: str, address: str = "") -> dict[str, Any]:
+        """Get a weather forecast for a city or business location using AMap."""
+        return weather_forecast(city=city, address=address, client=client)
+
+    return _wrap_tool(
+        name="amap_weather_forecast",
+        description="Get a weather forecast for a city or business location using AMap.",
+        func=amap_weather_forecast,
     )
 
 

@@ -15,7 +15,7 @@
 User Input
   -> ChatCLI / Future API
   -> AdvancedAgentService
-  -> KeywordSkillRouter
+  -> LLMFallbackRouter
   -> RouteDecision
   -> System Prompt + Domain Protocol + Capability Registry + Tool Registry
   -> LangGraph ReAct Agent
@@ -40,7 +40,13 @@ User Input
 
 路由层负责判断本轮对话应该使用哪个 skill。
 
-当前 `KeywordSkillRouter` 返回结构化 `RouteDecision`，包含：
+当前默认使用 `LLMFallbackRouter`：
+
+- 先用 `KeywordSkillRouter` 做确定性快速路由。
+- 当关键词路由低置信度时，调用当前配置的小模型做 skill 分类。
+- fallback 仍返回同一个结构化 `RouteDecision`，便于测试和替换。
+
+`RouteDecision` 包含：
 
 - `skill`
 - `confidence`
@@ -49,9 +55,7 @@ User Input
 - `required_capabilities`
 - `clarification_focus`
 
-路由器现在支持传入 thread context。若当前会话已有 `travel_brief`，后续短句补充、地点补充、偏好确认和授权推荐会继续路由到 `business_travel_advisor`，避免多轮商旅任务退回通用问答。
-
-下一步可以升级为 LLM router 或 hybrid router，但返回结构应保持稳定。
+路由器支持传入 thread context。若当前会话已有 `travel_brief`，后续短句补充、地点补充、偏好确认和授权推荐会继续路由到 `business_travel_advisor`，避免多轮商旅任务退回通用问答。
 
 ### `agent_framework/skills`
 
@@ -73,6 +77,7 @@ Skill 是一组面向任务的行为策略。
 当前已实现第一阶段商旅工作记忆：
 
 - `TravelBrief`: 结构化记录出发地、目的地、日期、到达时限、预算、偏好、风险等字段。
+- 相对日期标准化：会结合请求本地日期，将“下周三”“明天”“5月27日”等转成 `departure_date_iso` / `return_date_iso`。
 - `TravelBriefAssessment`: 评估缺失字段、推荐就绪度和最多 3 个建议追问。
 - `build_travel_context`: 将用户新输入和已有 thread context 合并，形成可注入 prompt 的商旅上下文。
 - 多轮补充：支持把“在陆家嘴上海中心大厦”“都可以，你推荐个最好的”这类后续输入合并进同一份 `TravelBrief`。
@@ -113,6 +118,7 @@ Skill 是一组面向任务的行为策略。
 - 两点通勤路线摘要
 - 业务地点周边酒店 POI
 - 业务地点周边餐饮 POI
+- 目的地天气预报
 
 该 provider 直接基于 `requests` 调用高德 Web 服务 API，不依赖 `realtime_api/` 参考目录，也不会触发机票/火车票爬虫相关依赖。只有设置 `AMAP_API_KEY` 后，相关工具才会注册进默认 ToolRegistry。
 
@@ -126,6 +132,7 @@ Skill 是一组面向任务的行为策略。
 - `amap_route_summary`
 - `amap_hotel_search`
 - `amap_restaurant_search`
+- `amap_weather_forecast`
 
 后续接入机票、酒店、日历、审批、报销等 API 时，应先扩展工具元信息：
 
@@ -157,6 +164,7 @@ Skill 是一组面向任务的行为策略。
 1. 已完成：强化商旅信息抽取，维护结构化 `TravelBrief`。
 2. 已完成：增加推荐结果 schema，方便前端展示和后续 API 执行。
 3. 已完成：接入高德地图只读 API，用于地址、路线、酒店和餐饮 POI 核验。
-4. 下一步：接入实时航班/火车/酒店价格/天气等只读 API。
-5. 增加 golden tests，评估路由、澄清问题和推荐质量。
-6. 再进入 Phase 2 执行型工具，加入授权、审计和回滚。
+4. 已完成：增加 golden tests，评估路由、槽位抽取和推荐结构。
+5. 已完成：增加 hybrid router、线程上下文 LRU 存储、工具调用 trace 和 Phase 2 授权/审计骨架。
+6. 下一步：接入实时航班/火车/酒店价格/天气等只读 API。
+7. 再进入 Phase 2 执行型工具，加入授权、审计和回滚。

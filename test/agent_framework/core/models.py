@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -10,8 +10,18 @@ class AgentRequest:
     query: str
     thread_id: str
     show_process: bool = False
-    requested_at: datetime = field(default_factory=datetime.now)
+    requested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     context: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ToolCallTrace:
+    name: str
+    args: dict[str, Any] = field(default_factory=dict)
+    result: str | None = None
+    latency_ms: float | None = None
+    status: str = "unknown"
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -22,6 +32,7 @@ class AgentTrace:
     matched_signals: tuple[str, ...] = ()
     required_capabilities: tuple[str, ...] = ()
     clarification_focus: tuple[str, ...] = ()
+    tool_calls: tuple[ToolCallTrace, ...] = ()
 
 
 @dataclass(frozen=True)

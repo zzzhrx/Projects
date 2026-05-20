@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -143,6 +144,29 @@ class AMapClient:
             "restaurants": items,
         }
 
+    def weather_forecast(self, city: str, address: str | None = None) -> dict[str, Any]:
+        location = self.resolve_location(city, address or city)
+        adcode = location.get("adcode") if location else city
+        data = self._get(
+            "/v3/weather/weatherInfo",
+            {
+                "city": adcode or city,
+                "extensions": "all",
+            },
+        )
+        forecasts = data.get("forecasts") or []
+        forecast = forecasts[0] if forecasts else {}
+        return {
+            "ok": bool(forecast),
+            "source": "amap",
+            "query": {"city": city, "address": address or "", "adcode": adcode or ""},
+            "location": location,
+            "city": _as_text(forecast.get("city")) or city,
+            "province": _as_text(forecast.get("province")),
+            "report_time": _as_text(forecast.get("reporttime")),
+            "casts": _shape_weather_casts(forecast.get("casts") or []),
+        }
+
     def summarize_route(
         self,
         origin_city: str,
@@ -257,7 +281,7 @@ class AMapClient:
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
-            raise AMapAPIError(f"AMap request failed: {exc}") from exc
+            raise AMapAPIError(f"AMap request failed: {_redact_amap_key(str(exc))}") from None
         except ValueError as exc:
             raise AMapAPIError("AMap returned a non-JSON response.") from exc
 
@@ -268,6 +292,10 @@ class AMapClient:
             raise AMapAPIError(detail)
 
         return data
+
+
+def _redact_amap_key(message: str) -> str:
+    return re.sub(r"([?&]key=)[^&\s]+", r"\1***", message)
 
 
 def get_amap_api_key(*, required: bool = True) -> str | None:
@@ -401,6 +429,26 @@ def _shape_walking_routes(data: dict[str, Any], *, limit: int) -> list[dict[str,
                 "rank": index,
                 "distance_meters": _safe_int(path.get("distance")),
                 "duration_minutes": _seconds_to_minutes(cost.get("duration")),
+            }
+        )
+    return results
+
+
+def _shape_weather_casts(casts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for cast in casts:
+        results.append(
+            {
+                "date": _as_text(cast.get("date")),
+                "week": _as_text(cast.get("week")),
+                "day_weather": _as_text(cast.get("dayweather")),
+                "night_weather": _as_text(cast.get("nightweather")),
+                "day_temp": _as_text(cast.get("daytemp")),
+                "night_temp": _as_text(cast.get("nighttemp")),
+                "day_wind": _as_text(cast.get("daywind")),
+                "night_wind": _as_text(cast.get("nightwind")),
+                "day_power": _as_text(cast.get("daypower")),
+                "night_power": _as_text(cast.get("nightpower")),
             }
         )
     return results

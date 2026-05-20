@@ -52,7 +52,7 @@ def build_default_capability_registry() -> CapabilityRegistry:
             ),
             CapabilitySpec(
                 name="realtime_map",
-                description="Resolve addresses, routes, hotels, and local POI data through AMap.",
+                description="Resolve addresses, routes, hotels, local POI data, and weather through AMap.",
                 status=CapabilityStatus.READY,
                 design_goal="Provide real-world travel grounding from map and POI data.",
             ),
@@ -79,6 +79,24 @@ def build_default_capability_registry() -> CapabilityRegistry:
                 description="Use tools and workflows to implement approved actions.",
                 status=CapabilityStatus.RESERVED,
                 design_goal="Eventually deliver autonomous task completion.",
+            ),
+            CapabilitySpec(
+                name="realtime_flight",
+                description="Query real-time flight information including schedules, prices, and availability.",
+                status=CapabilityStatus.RESERVED,
+                design_goal="Enable accurate flight search for business travel recommendations.",
+            ),
+            CapabilitySpec(
+                name="realtime_train",
+                description="Query real-time train information including schedules and ticket availability.",
+                status=CapabilityStatus.RESERVED,
+                design_goal="Enable accurate train search for business travel recommendations.",
+            ),
+            CapabilitySpec(
+                name="realtime_hotel_price",
+                description="Query real-time hotel pricing and room availability.",
+                status=CapabilityStatus.RESERVED,
+                design_goal="Enable accurate hotel price comparison for business travel recommendations.",
             ),
         ]
     )

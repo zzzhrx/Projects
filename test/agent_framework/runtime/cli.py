@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
+import traceback
+
 from agent_framework.agent.service import AdvancedAgentService
 from agent_framework.core.models import AgentRequest
 from agent_framework.core.settings import RuntimeSettings
+
+logger = logging.getLogger(__name__)
 
 
 class ChatCLI:
@@ -35,10 +40,14 @@ class ChatCLI:
             )
             try:
                 response = self.agent_service.run(request)
-            except RuntimeError as exc:
-                print(f"启动失败: {exc}")
-                print("提示: 先执行 `pip install -r requirements.txt`，并确认 `.env` 里的模型与搜索配置可用。")
-                break
+            except Exception as exc:
+                logger.error("Agent run failed", exc_info=True)
+                if self._is_config_error(exc):
+                    print(f"配置错误: {exc}")
+                    print("提示: 先执行 `pip install -r requirements.txt`，并确认 `.env` 里的模型与搜索配置可用。")
+                    break
+                print(f"本轮处理失败: {exc}")
+                continue
 
             for trace in response.trace_messages:
                 print(f"\n[过程]: {trace}")
@@ -51,3 +60,18 @@ class ChatCLI:
                     f"{response.trace.route_reason}"
                 )
             print(f"回复: {response.final_answer}")
+
+    @staticmethod
+    def _is_config_error(exc: Exception) -> bool:
+        config_error_types = (
+            "ApiKey",
+            "AuthenticationError",
+            "PermissionDeniedError",
+            "google.api_core",
+        )
+        message = str(exc).lower()
+        config_keywords = ("api key", "apikey", "authentication", "unauthorized", "403", "401")
+        return any(
+            t in type(exc).__name__ or t in type(exc).__module__
+            for t in config_error_types
+        ) or any(kw in message for kw in config_keywords)
